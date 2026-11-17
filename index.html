@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Graficador CAD 2D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Mesa de trabajo CAD: barra de herramientas, lienzo con cuadrícula de dibujo técnico y columna de propiedades */
+:root {
+  --bg: #EEF3F2; --panel: #FFFFFF; --ink: #13201F; --muted: #5A6B69; --line: #D3DDDB;
+  --accent: #00787A; --accent-soft: #DDEFEE; --accent-ink: #FFFFFF;
+  --lienzo: #FBFDFD; --grid: #E2EAE9; --grid-fina: #EFF4F3; --eje: #2B3A39;
+  --linea: #0068A8; --arco: #00916A; --circulo: #C98A00; --elipse: #B4588F; --cota: #7A1F5C;
+  --rojo: #C0392B; --ok: #1B7F3A; --aviso: #A65300; --sombra: rgba(19, 32, 31, .08);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0D1515; --panel: #142020; --ink: #E2ECEA; --muted: #94A6A4; --line: #263A3A;
+  --accent: #33B5AF; --accent-soft: #173534; --accent-ink: #062120;
+  --lienzo: #0F1A1A; --grid: #1D2D2D; --grid-fina: #162424; --eje: #A9BDBB;
+  --linea: #5AAEE6; --arco: #35C99D; --circulo: #F0B43C; --elipse: #E696C4; --cota: #E58BC0;
+  --rojo: #F2705F; --ok: #5BD083; --aviso: #F0A35A; --sombra: rgba(0, 0, 0, .35); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0D1515; --panel: #142020; --ink: #E2ECEA; --muted: #94A6A4; --line: #263A3A;
+  --accent: #33B5AF; --accent-soft: #173534; --accent-ink: #062120;
+  --lienzo: #0F1A1A; --grid: #1D2D2D; --grid-fina: #162424; --eje: #A9BDBB;
+  --linea: #5AAEE6; --arco: #35C99D; --circulo: #F0B43C; --elipse: #E696C4; --cota: #E58BC0;
+  --rojo: #F2705F; --ok: #5BD083; --aviso: #F0A35A; --sombra: rgba(0, 0, 0, .35); color-scheme: dark }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 14px; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 10px;
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.cabeza { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cabeza h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.cabeza .sub { color: var(--muted); font-size: 13px; }
+.chip { margin-left: auto; font-family: var(--mono); font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--muted); white-space: nowrap; }
+.chip.listo { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+.chip.error { color: var(--rojo); }
+
+.cuerpo { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 12px; }
+.trabajo { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px; }
+.barra { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.grupo { display: flex; flex-wrap: wrap; gap: 4px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 6px 11px; cursor: pointer;
+  line-height: 1.2; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn[aria-pressed="true"], .btn.primario { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.interruptor[aria-pressed="false"] { color: var(--muted); }
+.btn:disabled { opacity: .5; cursor: default; }
+.etiqueta { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+
+.franja { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; min-height: 30px; }
+.instr { background: color-mix(in srgb, #F2C200 18%, var(--panel)); border: 1px solid color-mix(in srgb, #E0B000 55%, var(--line));
+  border-radius: 6px; padding: 4px 10px; font-size: 13px; }
+.titulo { margin-left: auto; font-weight: 600; color: var(--muted); font-size: 13px; }
+
+.lienzo-caja { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  background: var(--lienzo); box-shadow: 0 1px 3px var(--sombra); touch-action: none; }
+canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.leyenda { position: absolute; top: 8px; right: 8px; display: grid; gap: 3px; padding: 7px 10px; font-size: 12px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 6px; pointer-events: none; }
+.leyenda span { display: flex; align-items: center; gap: 8px; }
+.leyenda i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+.zoom { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 4px; }
+.zoom .btn { padding: 4px 10px; background: color-mix(in srgb, var(--panel) 92%, transparent); }
+.coord { position: absolute; top: 8px; left: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 2px 8px; border-radius: 4px; pointer-events: none; }
+.carga { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+  background: color-mix(in srgb, var(--lienzo) 92%, transparent); }
+.carga p { margin: 6px 0; max-width: 42ch; color: var(--muted); }
+.carga strong { color: var(--ink); font-size: 15px; }
+.barrita { width: 220px; height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; margin: 10px auto 0; }
+.barrita div { width: 40%; height: 100%; background: var(--accent); animation: ir 1.2s ease-in-out infinite; }
+@keyframes ir { 0% { transform: translateX(-100%) } 100% { transform: translateX(250%) } }
+@media (prefers-reduced-motion: reduce) { .barrita div { animation: none; width: 100%; } }
+
+.escala { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.escala label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; }
+input[type="number"], input[type="text"], select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 7px; min-width: 0; }
+.escala input { width: 92px; font-family: var(--mono); font-size: 13px; }
+
+.lado { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.tarjeta { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 10px; }
+.fila { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.fila select { flex: 1 1 140px; }
+.medidas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.medidas label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.medidas input { font-family: var(--mono); font-size: 13px; width: 100%; }
+.estado { border-radius: 6px; padding: 8px 10px; font-size: 13px; border: 1px solid var(--line); }
+.estado b { display: block; }
+.estado.ok { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); color: var(--ok); }
+.estado.mal { border-color: color-mix(in srgb, var(--rojo) 45%, var(--line)); color: var(--rojo); }
+.estado.neutro { color: var(--muted); }
+.estado span { font-family: var(--mono); font-size: 12.5px; }
+.avisos { margin: 0; padding-left: 18px; color: var(--aviso); font-size: 13px; display: grid; gap: 2px; }
+.transf { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px; }
+.transf input { font-family: var(--mono); }
+.pista { grid-column: 2; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.panel { flex: 1 1 auto; min-height: 260px; grid-template-rows: auto 1fr; }
+.pestanas { display: flex; gap: 4px; }
+.pestanas .btn { padding: 4px 10px; font-size: 13px; }
+pre { margin: 0; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink);
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel)); border-radius: 6px; padding: 10px; max-height: 100%; tab-size: 4; }
+pre.ajustar { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 980px) {
+  html, body { height: auto; }
+  .app { height: auto; }
+  .cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .trabajo { grid-template-rows: auto auto 62vh auto; }
+  .lado { overflow: visible; }
+  .panel pre { max-height: 420px; }
+  .chip { margin-left: 0; }
+}
+@media (max-width: 480px) { .transf { grid-template-columns: minmax(0, 1fr); } .pista { grid-column: 1; } .medidas { grid-template-columns: minmax(0, 1fr); } }
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)} body{margin:0} [hidden]{display:none!important}</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="cabeza">
+    <h1>Graficador CAD 2D</h1>
+    <span class="sub">Líneas, arcos, círculos y elipses con transformaciones homogéneas · núcleo en Python</span>
+    <span class="chip" id="chip">Cargando Python…</span>
+  </header>
+
+  <div class="cuerpo">
+    <section class="trabajo" aria-label="Área de trabajo">
+      <div class="barra">
+        <div class="grupo" id="herramientas" role="group" aria-label="Herramienta de dibujo"></div>
+        <div class="grupo">
+          <button class="btn" id="b-borrar1" type="button">Borrar último</button>
+          <button class="btn" id="b-borrar" type="button">Borrar dibujo</button>
+        </div>
+        <div class="grupo" id="ver" role="group" aria-label="Mostrar"></div>
+      </div>
+      <div class="franja">
+        <span class="instr" id="instr">Rueda o botones: zoom · arrastrar: desplazar · para dibujar, elige una herramienta</span>
+        <span class="titulo" id="titulo"></span>
+      </div>
+      <div class="lienzo-caja" id="caja">
+        <canvas id="lienzo" aria-label="Lienzo de dibujo"></canvas>
+        <div class="leyenda" aria-hidden="true">
+          <span><i style="background:var(--linea)"></i>Línea</span>
+          <span><i style="background:var(--arco)"></i>Arco</span>
+          <span><i style="background:var(--circulo)"></i>Círculo</span>
+          <span><i style="background:var(--elipse)"></i>Elipse</span>
+        </div>
+        <div class="coord" id="coord">x = —  y = —</div>
+        <div class="zoom">
+          <button class="btn" id="z-mas" type="button" aria-label="Acercar">+</button>
+          <button class="btn" id="z-menos" type="button" aria-label="Alejar">−</button>
+          <button class="btn" id="z-auto" type="button">Encuadrar</button>
+        </div>
+        <div class="carga" id="carga">
+          <div>
+            <strong id="carga-t">Iniciando Python en tu navegador</strong>
+            <p id="carga-d">Se descargan unos 13 MB la primera vez. El cálculo de figuras, matrices y verificaciones corre en Python (Pyodide), sin servidor.</p>
+            <div class="barrita"><div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="escala">
+        <span class="etiqueta">Ejes</span>
+        <label>X <input type="number" id="x0" step="any"></label>
+        <label>a <input type="number" id="x1" step="any"></label>
+        <label>Y <input type="number" id="y0" step="any"></label>
+        <label>a <input type="number" id="y1" step="any"></label>
+        <label>Cuadrícula <input type="text" id="paso" value="auto" inputmode="decimal"></label>
+        <button class="btn" id="b-escala" type="button">Aplicar escala</button>
+        <button class="btn" id="b-auto" type="button">Auto</button>
+        <div class="grupo" id="opciones"></div>
+      </div>
+    </section>
+
+    <aside class="lado" aria-label="Propiedades">
+      <section class="tarjeta">
+        <span class="etiqueta">Pieza paramétrica</span>
+        <div class="fila">
+          <select id="pieza" aria-label="Pieza"></select>
+          <button class="btn" id="b-cerrar" type="button">Cerrar contorno</button>
+          <button class="btn" id="b-iniciales" type="button">Medidas iniciales</button>
+        </div>
+        <div class="medidas" id="medidas"></div>
+        <div class="estado neutro" id="estado"><b>Esperando a Python…</b></div>
+        <ul class="avisos" id="avisos"></ul>
+      </section>
+      <section class="tarjeta">
+        <span class="etiqueta">Transformaciones</span>
+        <div class="transf">
+          <select id="tipo-t" aria-label="Tipo de transformación"></select>
+          <input type="text" id="valores-t" aria-label="Valores de la transformación">
+          <span class="pista" id="pista-t"></span>
+        </div>
+        <div class="fila">
+          <button class="btn primario" id="b-aplicar" type="button">Aplicar</button>
+          <button class="btn" id="b-deshacer" type="button">Deshacer</button>
+          <button class="btn" id="b-reiniciar" type="button">Reiniciar</button>
+        </div>
+      </section>
+      <section class="tarjeta panel">
+        <div class="fila">
+          <div class="pestanas" role="tablist">
+            <button class="btn" id="tab-ec" type="button" role="tab" aria-pressed="true">Ecuaciones y matrices</button>
+            <button class="btn" id="tab-py" type="button" role="tab" aria-pressed="false">Código Python</button>
+          </div>
+        </div>
+        <pre id="panel" class="ajustar">Las ecuaciones aparecerán cuando Python termine de cargar.</pre>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="pyodide/pyodide.js"></script>
+<script>
+// =====================================================================
+//  Interfaz (JavaScript): dibuja en pantalla y atiende el mouse.
+//  Todo el cálculo (figuras, matrices, cierre, área, interferencias,
+//  cotas y ecuaciones) lo hace nucleo_cad.py, que corre en Python.
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const HERRAMIENTAS = ["Sin dibujo", "Línea", "Polilínea", "Círculo", "Arco", "Elipse"];
+const PASOS = {
+  "Línea": ["clic en el punto inicial", "clic en el punto final"],
+  "Polilínea": ["clic en el primer punto", "clic = vértice · clic en el 1.er punto = cerrar · clic derecho = terminar"],
+  "Círculo": ["clic en el centro", "clic en un punto de la circunferencia"],
+  "Arco": ["clic en el centro", "clic en el punto inicial (define el radio)", "clic en el punto final (sentido antihorario)"],
+  "Elipse": ["clic en el centro", "clic en el extremo del semieje mayor a", "clic para definir el semieje menor b"],
+};
+const NECESARIOS = { "Línea": 2, "Círculo": 2, "Arco": 3, "Elipse": 3 };
+const TIPOS_T = {
+  "Traslación": ["traslacion", "tx ty", "4 2"], "Rotación": ["rotacion", "θ px py", "45 0 0"],
+  "Escalado": ["escalado", "sx sy px py", "1.5 1.5 0 0"], "Simetría eje X": ["eje_x", "(no pide valores)", ""],
+  "Simetría eje Y": ["eje_y", "(no pide valores)", ""], "Simetría origen": ["origen", "(no pide valores)", ""],
+  "Simetría recta": ["recta", "x1 y1 x2 y2", "-2 0 -2 5"],
+};
+
+const S = {
+  pieza: "Pieza con arco", valores: {}, pila: [], libres: [], n: 0,
+  ver: { Cotas: true, Original: true, Pieza: true }, misma: true, iman: true,
+  herramienta: "Sin dibujo", clics: [], escena: null, mensaje: "",
+  vista: { x0: -2, x1: 8, y0: -2, y1: 6 }, fija: false, paso: null, cursor: null, iman_punto: null, pestana: "ec",
+};
+let nucleo = null, catalogo = {}, codigoPython = "";
+
+// ---------------- Python ----------------
+async function iniciarPython() {
+  try {
+    const base = new URL("pyodide/", document.baseURI).href;
+    // la biblioteca estándar de Python se publica con extensión .wasm (es el mismo archivo .zip)
+    const py = await loadPyodide({ indexURL: base, stdLibURL: base + "python_stdlib.wasm" });
+    $("carga-t").textContent = "Cargando el núcleo de cálculo";
+    codigoPython = await (await fetch(new URL("nucleo_cad.py", document.baseURI))).text();
+    py.FS.writeFile("nucleo_cad.py", codigoPython);
+    py.runPython("import sys; sys.path.insert(0, '.')");
+    nucleo = py.pyimport("nucleo_cad");
+    catalogo = JSON.parse(nucleo.catalogo());
+    const version = py.runPython("import sys; sys.version.split()[0]");
+    const pruebas = nucleo.prueba();
+    $("chip").textContent = `Python ${version} · ${pruebas}`;
+    $("chip").className = "chip listo";
+    $("carga").hidden = true;
+    llenarPiezas();
+    elegirPieza(S.pieza);
+  } catch (err) {
+    $("chip").textContent = "Python no pudo iniciar"; $("chip").className = "chip error";
+    $("carga-t").textContent = "No se pudo iniciar Python en este navegador";
+    $("carga-d").textContent = "Detalle: " + (err && err.message ? err.message : err) +
+      ". Prueba con una versión reciente de Chrome, Edge o Firefox.";
+    document.querySelector(".barrita").hidden = true;
+  }
+}
+
+function llamar(fn, ...args) {          // llama a Python y convierte el resultado
+  const r = nucleo[fn](...args);
+  if (r && r.toJs) { const v = r.toJs({ dict_converter: Object.fromEntries }); r.destroy(); return v; }
+  return r;
+}
+
+function recalcular() {
+  if (!nucleo) return;
+  const estado = { pieza: S.pieza, valores: S.valores, pila: S.pila, libres: S.libres, ver: S.ver };
+  S.escena = JSON.parse(nucleo.escena(JSON.stringify(estado)));
+  if (!S.fija) encuadrar();
+  actualizarTextos();
+  dibujar();
+}
+
+// ---------------- Controles ----------------
+function boton(texto, onClick, presionado) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "btn"; b.textContent = texto;
+  if (presionado !== undefined) b.setAttribute("aria-pressed", String(presionado));
+  b.addEventListener("click", onClick);
+  return b;
+}
+HERRAMIENTAS.forEach((h) => $("herramientas").append(boton(h, () => cambiarHerramienta(h), h === S.herramienta)));
+for (const k of ["Cotas", "Original", "Pieza"]) {
+  const b = boton(k, () => { S.ver[k] = !S.ver[k]; b.setAttribute("aria-pressed", String(S.ver[k])); recalcular(); }, true);
+  b.classList.add("interruptor"); $("ver").append(b);
+}
+const bMisma = boton("Misma escala", () => { S.misma = !S.misma; bMisma.setAttribute("aria-pressed", String(S.misma)); S.vista = ajustar(S.vista); dibujar(); }, true);
+const bIman = boton("Imán", () => { S.iman = !S.iman; bIman.setAttribute("aria-pressed", String(S.iman)); }, true);
+bMisma.classList.add("interruptor"); bIman.classList.add("interruptor");
+$("opciones").append(bMisma, bIman);
+
+function cambiarHerramienta(h) {
+  S.herramienta = h; S.clics = [];
+  for (const b of $("herramientas").children) b.setAttribute("aria-pressed", String(b.textContent === h));
+  $("lienzo").style.cursor = h === "Sin dibujo" ? "grab" : "crosshair";
+  actualizarInstruccion(); dibujar();
+}
+function actualizarInstruccion() {
+  const h = S.herramienta;
+  $("instr").textContent = h === "Sin dibujo"
+    ? "Rueda o botones: zoom · arrastrar: desplazar · para dibujar, elige una herramienta"
+    : `${h}: ${PASOS[h][Math.min(S.clics.length, h === "Polilínea" ? 1 : S.clics.length)]} · Esc = cancelar`;
+}
+
+function llenarPiezas() {
+  $("pieza").innerHTML = "";
+  for (const n of Object.keys(catalogo)) $("pieza").append(new Option(n, n));
+  for (const n of Object.keys(TIPOS_T)) $("tipo-t").append(new Option(n, n));
+  cambiarTipo();
+}
+function elegirPieza(nombre) {
+  S.pieza = nombre; $("pieza").value = nombre;
+  if (!S.valores._de || S.valores._de !== nombre) S.valores = valoresIniciales(nombre);
+  crearMedidas(); S.fija = false; recalcular();
+}
+function valoresIniciales(nombre) {
+  const v = { _de: nombre };
+  for (const [k, , d] of catalogo[nombre]) v[k] = d;
+  return v;
+}
+function crearMedidas() {
+  const caja = $("medidas"); caja.innerHTML = "";
+  for (const [k, etiqueta] of catalogo[S.pieza]) {
+    const l = document.createElement("label");
+    const i = document.createElement("input");
+    i.type = "number"; i.step = "0.1"; i.min = "0.001"; i.id = "m-" + k; i.value = S.valores[k];
+    i.addEventListener("change", () => {
+      const v = parseFloat(i.value);
+      if (!(v > 0)) { S.mensaje = "Las medidas deben ser números positivos"; i.value = S.valores[k]; }
+      else S.valores[k] = v;
+      recalcular();
+    });
+    l.append(etiqueta, i); caja.append(l);
+  }
+}
+$("pieza").addEventListener("change", (e) => elegirPieza(e.target.value));
+$("b-iniciales").addEventListener("click", () => { S.valores = valoresIniciales(S.pieza); crearMedidas(); recalcular(); });
+$("b-cerrar").addEventListener("click", () => {
+  const r = JSON.parse(nucleo.cerrar_contorno(S.pieza, JSON.stringify(S.valores)));
+  if (r.valores) { S.valores = r.valores; crearMedidas(); }
+  S.mensaje = r.mensaje; recalcular();
+});
+
+function cambiarTipo() {
+  const [, pista, sugerido] = TIPOS_T[$("tipo-t").value];
+  $("pista-t").textContent = "Valores: " + pista; $("valores-t").value = sugerido; $("valores-t").placeholder = pista;
+}
+$("tipo-t").addEventListener("change", cambiarTipo);
+function aplicarT() {
+  const tipo = TIPOS_T[$("tipo-t").value][0];
+  const r = llamar("validar_transformacion", tipo, $("valores-t").value);
+  if (r.error) { S.mensaje = r.error; recalcular(); return; }
+  S.pila.push({ tipo, vals: r.ok }); recalcular();
+}
+$("b-aplicar").addEventListener("click", aplicarT);
+$("valores-t").addEventListener("keydown", (e) => { if (e.key === "Enter") aplicarT(); });
+$("b-deshacer").addEventListener("click", () => {
+  S.pila.pop(); S.libres.forEach((f) => (f.desde = Math.min(f.desde, S.pila.length))); recalcular();
+});
+$("b-reiniciar").addEventListener("click", () => { S.pila = []; S.libres.forEach((f) => (f.desde = 0)); recalcular(); });
+$("b-borrar1").addEventListener("click", () => { S.libres.pop(); S.clics = []; recalcular(); });
+$("b-borrar").addEventListener("click", () => { S.libres = []; S.clics = []; S.n = 0; recalcular(); });
+
+$("tab-ec").addEventListener("click", () => mostrarPestana("ec"));
+$("tab-py").addEventListener("click", () => mostrarPestana("py"));
+function mostrarPestana(p) {
+  S.pestana = p;
+  $("tab-ec").setAttribute("aria-pressed", String(p === "ec")); $("tab-py").setAttribute("aria-pressed", String(p === "py"));
+  $("panel").textContent = p === "py" ? (codigoPython || "Cargando…") : (S.escena ? S.escena.panel : "");
+  $("panel").classList.toggle("ajustar", p !== "py");
+  $("panel").scrollTop = 0;
+}
+
+function actualizarTextos() {
+  const e = S.escena;
+  $("titulo").textContent = e.titulo;
+  const est = $("estado");
+  est.className = "estado " + e.estado.clase;
+  est.innerHTML = "";
+  const b = document.createElement("b"); b.textContent = e.estado.titulo;
+  const s = document.createElement("span"); s.textContent = e.estado.detalle;
+  est.append(b, s);
+  const av = $("avisos"); av.innerHTML = "";
+  const lista = (S.mensaje ? [S.mensaje] : []).concat(e.avisos);
+  S.mensaje = "";
+  for (const a of lista) { const li = document.createElement("li"); li.textContent = a; av.append(li); }
+  if (S.pestana === "ec") $("panel").textContent = e.panel;
+  actualizarInstruccion();
+  llenarEscala();
+}
+
+// ---------------- Vista: mundo <-> pantalla ----------------
+const lienzo = $("lienzo"), ctx = lienzo.getContext("2d");
+let W = 0, H = 0;
+function medir() {
+  const r = lienzo.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  W = r.width; H = r.height;
+  lienzo.width = Math.round(W * dpr); lienzo.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function ajustar(v) {                       // escala 1:1 ampliando X o Y
+  if (!S.misma || !W || !H) return v;
+  const s = Math.max((v.x1 - v.x0) / W, (v.y1 - v.y0) / H), cx = (v.x0 + v.x1) / 2, cy = (v.y0 + v.y1) / 2;
+  return { x0: cx - s * W / 2, x1: cx + s * W / 2, y0: cy - s * H / 2, y1: cy + s * H / 2 };
+}
+function encuadrar() {
+  const e = S.escena;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const ver = (p) => { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); };
+  if (e) { e.curvas.forEach((c) => c.pts.forEach(ver)); e.originales.forEach((c) => c.forEach(ver)); e.cotas.forEach((c) => { ver(c.ini); ver(c.fin); c.ext.forEach((s) => s.forEach(ver)); }); }
+  if (!isFinite(x0)) { x0 = -10; x1 = 10; y0 = -6; y1 = 6; }
+  const mx = Math.max((x1 - x0) * 0.12, 0.5), my = Math.max((y1 - y0) * 0.12, 0.5);
+  S.vista = ajustar({ x0: x0 - mx, x1: x1 + mx, y0: y0 - my, y1: y1 + my });
+}
+const aX = (x) => (x - S.vista.x0) / (S.vista.x1 - S.vista.x0) * W;
+const aY = (y) => H - (y - S.vista.y0) / (S.vista.y1 - S.vista.y0) * H;
+const deX = (px) => S.vista.x0 + px / W * (S.vista.x1 - S.vista.x0);
+const deY = (py) => S.vista.y0 + (H - py) / H * (S.vista.y1 - S.vista.y0);
+function pasoRedondo(rango) {
+  const bruto = Math.max(Math.abs(rango), 1e-9) / 10, p = Math.pow(10, Math.floor(Math.log10(bruto)));
+  for (const m of [1, 2, 5, 10]) if (bruto <= m * p) return m * p;
+  return 10 * p;
+}
+function pasoActual() { return S.paso || pasoRedondo(S.vista.x1 - S.vista.x0); }
+function fmt(v) { return Math.abs(v) < 1e-9 ? "0" : String(+v.toPrecision(6)); }
+
+function llenarEscala() {
+  const ids = ["x0", "x1", "y0", "y1"];
+  ids.forEach((k) => { if (document.activeElement !== $(k)) $(k).value = +S.vista[k].toPrecision(4); });
+}
+$("b-escala").addEventListener("click", () => {
+  const v = { x0: +$("x0").value, x1: +$("x1").value, y0: +$("y0").value, y1: +$("y1").value };
+  if (!(v.x0 < v.x1 && v.y0 < v.y1)) { S.mensaje = "Ejes: cada mínimo debe ser menor que su máximo"; recalcular(); return; }
+  const t = $("paso").value.trim().toLowerCase();
+  if (t === "" || t === "auto" || t === "0") S.paso = null;
+  else {
+    const p = parseFloat(t.replace(",", "."));
+    if (!(p > 0)) { S.mensaje = "Cuadrícula: escribe un número positivo o 'auto'"; S.paso = null; }
+    else if (Math.max(v.x1 - v.x0, v.y1 - v.y0) / p > 200) { S.mensaje = "Cuadrícula demasiado fina para esa escala: se usa automática"; S.paso = null; }
+    else S.paso = p;
+  }
+  S.vista = ajustar(v); S.fija = true; recalcular();
+});
+$("b-auto").addEventListener("click", () => { S.fija = false; S.paso = null; $("paso").value = "auto"; recalcular(); });
+$("z-auto").addEventListener("click", () => { S.fija = false; recalcular(); });
+function zoom(k, px, py) {
+  const x = deX(px), y = deY(py), v = S.vista;
+  S.vista = { x0: x - (x - v.x0) * k, x1: x + (v.x1 - x) * k, y0: y - (y - v.y0) * k, y1: y + (v.y1 - y) * k };
+  S.fija = true; llenarEscala(); dibujar();
+}
+$("z-mas").addEventListener("click", () => zoom(1 / 1.25, W / 2, H / 2));
+$("z-menos").addEventListener("click", () => zoom(1.25, W / 2, H / 2));
+
+// ---------------- Dibujo en el lienzo ----------------
+function color(nombre) { return getComputedStyle(document.documentElement).getPropertyValue(nombre).trim(); }
+function polilinea(pts) { ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(aX(p[0]), aY(p[1])) : ctx.moveTo(aX(p[0]), aY(p[1])))); ctx.stroke(); }
+function flecha(punta, cola, col) {
+  const a = Math.atan2(aY(punta[1]) - aY(cola[1]), aX(punta[0]) - aX(cola[0])), x = aX(punta[0]), y = aY(punta[1]), L = 10;
+  ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y);
+  ctx.lineTo(x - L * Math.cos(a - 0.28), y - L * Math.sin(a - 0.28)); ctx.lineTo(x - L * Math.cos(a + 0.28), y - L * Math.sin(a + 0.28));
+  ctx.closePath(); ctx.fill();
+}
+function puntos(lista, fn) { lista.forEach((p) => fn(aX(p[0]), aY(p[1]))); }
+
+function dibujar() {
+  if (!W) return;
+  const C = { lienzo: color("--lienzo"), grid: color("--grid"), fina: color("--grid-fina"), eje: color("--eje"), muted: color("--muted"),
+    ink: color("--ink"), cota: color("--cota"), rojo: color("--rojo"), panel: color("--panel"),
+    tipo: { "Línea": color("--linea"), "Arco": color("--arco"), "Círculo": color("--circulo"), "Elipse": color("--elipse") } };
+  ctx.fillStyle = C.lienzo; ctx.fillRect(0, 0, W, H);
+
+  // cuadrícula: mayor (paso) y menor (paso/2), como en papel milimétrico
+  const p = pasoActual(), v = S.vista;
+  for (const [paso, col] of [[p / 2, C.fina], [p, C.grid]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = Math.ceil(v.x0 / paso) * paso; x <= v.x1; x += paso) { const X = Math.round(aX(x)) + .5; ctx.moveTo(X, 0); ctx.lineTo(X, H); }
+    for (let y = Math.ceil(v.y0 / paso) * paso; y <= v.y1; y += paso) { const Y = Math.round(aY(y)) + .5; ctx.moveTo(0, Y); ctx.lineTo(W, Y); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = C.eje; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.moveTo(aX(0), 0); ctx.lineTo(aX(0), H); ctx.moveTo(0, aY(0)); ctx.lineTo(W, aY(0)); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = "11px " + color("--mono");
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  for (let x = Math.ceil(v.x0 / p) * p; x <= v.x1; x += p) ctx.fillText(fmt(x), aX(x), H - 4);
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  for (let y = Math.ceil(v.y0 / p) * p; y <= v.y1; y += p) if (aY(y) < H - 18) ctx.fillText(fmt(y), 5, aY(y));
+
+  const e = S.escena;
+  if (e) {
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1; e.originales.forEach(polilinea); ctx.setLineDash([]);
+    for (const eje of e.ejes) {                  // ejes de simetría (rectas infinitas)
+      const [x1, y1, x2, y2] = eje, dx = x2 - x1, dy = y2 - y1, L = 1e4 / Math.hypot(dx, dy);
+      ctx.setLineDash([9, 4, 2, 4]); ctx.strokeStyle = C.rojo; ctx.lineWidth = 1;
+      polilinea([[x1 - dx * L, y1 - dy * L], [x1 + dx * L, y1 + dy * L]]); ctx.setLineDash([]);
+    }
+    ctx.lineWidth = 2.2;
+    for (const c of e.curvas) { ctx.strokeStyle = C.tipo[c.tipo]; polilinea(c.pts); }
+    for (const c of e.cotas) {
+      ctx.strokeStyle = C.cota; ctx.lineWidth = 1;
+      c.ext.forEach(polilinea); polilinea([c.ini, c.fin]);
+      flecha(c.fin, c.ini, C.cota); if (c.doble) flecha(c.ini, c.fin, C.cota);
+      ctx.font = "12px " + color("--sans"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const w = ctx.measureText(c.texto).width + 8, X = aX(c.pos[0]), Y = aY(c.pos[1]);
+      ctx.fillStyle = C.lienzo; ctx.globalAlpha = .9; ctx.fillRect(X - w / 2, Y - 9, w, 18); ctx.globalAlpha = 1;
+      ctx.fillStyle = C.cota; ctx.fillText(c.texto, X, Y);
+    }
+    ctx.fillStyle = C.ink; puntos(e.ok, (x, y) => { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); });
+    ctx.strokeStyle = C.rojo; ctx.lineWidth = 2.2;
+    puntos(e.cruces, (x, y) => { ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x + 6, y + 6); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x - 6, y + 6); ctx.stroke(); });
+    ctx.lineWidth = 1.8; puntos(e.sueltos, (x, y) => { ctx.beginPath(); ctx.arc(x, y, 6.5, 0, 7); ctx.stroke(); });
+  }
+  // vista previa de la figura en curso (solo visual)
+  const prev = vistaPrevia();
+  if (prev.length) { ctx.setLineDash([6, 4]); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.4; polilinea(prev); ctx.setLineDash([]); }
+  ctx.fillStyle = C.ink; puntos(S.clics, (x, y) => { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); });
+  if (S.iman_punto && S.herramienta !== "Sin dibujo") {
+    const [q, modo] = S.iman_punto; ctx.strokeStyle = modo === "punto" ? C.rojo : C.muted; ctx.lineWidth = 1.5;
+    ctx.strokeRect(aX(q[0]) - 6, aY(q[1]) - 6, 12, 12);
+  }
+}
+
+// Vista previa (JavaScript, solo para mostrar la figura mientras se mueve el mouse)
+function arcoJS(cx, cy, r, a1, a2, n = 90) { if (a2 <= a1) a2 += 2 * Math.PI; return Array.from({ length: n }, (_, i) => { const t = a1 + (a2 - a1) * i / (n - 1); return [cx + r * Math.cos(t), cy + r * Math.sin(t)]; }); }
+function vistaPrevia() {
+  const c = S.clics, h = S.herramienta, p = S.iman_punto && S.iman_punto[0];
+  if (!c.length || !p) return [];
+  const [x0, y0] = c[0], r = Math.hypot((c[1] || p)[0] - x0, (c[1] || p)[1] - y0);
+  if (h === "Línea" || h === "Polilínea") return [c[c.length - 1], p];
+  if (h === "Círculo") return arcoJS(x0, y0, r, 0, 2 * Math.PI);
+  if (h === "Arco") return c.length === 1 ? arcoJS(x0, y0, r, 0, 2 * Math.PI).concat([[x0, y0], p])
+    : arcoJS(x0, y0, r, Math.atan2(c[1][1] - y0, c[1][0] - x0), Math.atan2(p[1] - y0, p[0] - x0));
+  if (h === "Elipse") {
+    if (c.length === 1) return [c[0], p];
+    const ux = (c[1][0] - x0) / r, uy = (c[1][1] - y0) / r, b = Math.abs(ux * (p[1] - y0) - uy * (p[0] - x0));
+    return Array.from({ length: 90 }, (_, i) => { const t = 2 * Math.PI * i / 89, X = r * Math.cos(t), Y = b * Math.sin(t); return [x0 + X * ux - Y * uy, y0 + X * uy + Y * ux]; });
+  }
+  return [];
+}
+
+// ---------------- Mouse: imán, clics, arrastre y rueda ----------------
+function puntoIman(px, py) {
+  const p = [deX(px), deY(py)];
+  if (!S.iman) return [p, "libre"];
+  const tol = 10 * (S.vista.x1 - S.vista.x0) / W;
+  let mejor = null, dmin = tol;
+  for (const q of (S.escena ? S.escena.notables : []).concat(S.clics)) {
+    const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < dmin) { dmin = d; mejor = q; }
+  }
+  if (mejor) return [[mejor[0], mejor[1]], "punto"];
+  const g = pasoActual() / 2;
+  return [[Math.round(p[0] / g) * g, Math.round(p[1] / g) * g], "cuadrícula"];
+}
+const igual = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-12;
+function nombre(tipo) { S.n += 1; return `${tipo} D${S.n}`; }
+
+function clic(px, py, derecho) {
+  if (!nucleo || S.herramienta === "Sin dibujo") return;
+  if (derecho) { S.clics = []; recalcular(); return; }
+  const [p] = puntoIman(px, py), h = S.herramienta, c = S.clics;
+  if (h === "Polilínea") {
+    if (c.length && igual(p, c[c.length - 1])) S.clics = [];
+    else {
+      if (c.length) S.libres.push({ tipo: "Línea", clics: [c[c.length - 1], p], nombre: nombre("Línea"), desde: S.pila.length });
+      if (c.length >= 2 && igual(p, c[0])) { S.clics = []; S.mensaje = "Polilínea cerrada"; } else c.push(p);
+    }
+    recalcular(); return;
+  }
+  c.push(p);
+  if (c.length < NECESARIOS[h]) { actualizarInstruccion(); dibujar(); return; }
+  const error = nucleo.validar_clics(h, JSON.stringify(c));
+  if (error) S.mensaje = error;
+  else S.libres.push({ tipo: h, clics: c.slice(), nombre: nombre(h), desde: S.pila.length });
+  S.clics = []; recalcular();
+}
+
+let arrastre = null;
+lienzo.addEventListener("pointerdown", (ev) => {
+  lienzo.setPointerCapture(ev.pointerId);
+  arrastre = { x: ev.offsetX, y: ev.offsetY, v: { ...S.vista }, movio: false, boton: ev.button };
+});
+lienzo.addEventListener("pointermove", (ev) => {
+  const x = ev.offsetX, y = ev.offsetY;
+  $("coord").textContent = `x = ${fmt(deX(x))}  y = ${fmt(deY(y))}`;
+  if (arrastre) {
+    const dx = x - arrastre.x, dy = y - arrastre.y;
+    if (Math.hypot(dx, dy) > 4) arrastre.movio = true;
+    if (arrastre.movio) {
+      const kx = (arrastre.v.x1 - arrastre.v.x0) / W, ky = (arrastre.v.y1 - arrastre.v.y0) / H;
+      S.vista = { x0: arrastre.v.x0 - dx * kx, x1: arrastre.v.x1 - dx * kx, y0: arrastre.v.y0 + dy * ky, y1: arrastre.v.y1 + dy * ky };
+      S.fija = true; lienzo.style.cursor = "grabbing"; llenarEscala(); dibujar(); return;
+    }
+  }
+  S.iman_punto = S.herramienta === "Sin dibujo" ? null : puntoIman(x, y);
+  dibujar();
+});
+lienzo.addEventListener("pointerup", (ev) => {
+  if (arrastre && !arrastre.movio) clic(ev.offsetX, ev.offsetY, arrastre.boton === 2);
+  arrastre = null; lienzo.style.cursor = S.herramienta === "Sin dibujo" ? "grab" : "crosshair";
+});
+lienzo.addEventListener("pointerleave", () => { S.iman_punto = null; dibujar(); });
+lienzo.addEventListener("contextmenu", (ev) => ev.preventDefault());
+lienzo.addEventListener("wheel", (ev) => { ev.preventDefault(); zoom(ev.deltaY < 0 ? 1 / 1.2 : 1.2, ev.offsetX, ev.offsetY); }, { passive: false });
+window.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { S.clics = []; actualizarInstruccion(); dibujar(); } });
+
+new ResizeObserver(() => { medir(); S.vista = ajustar(S.vista); llenarEscala(); dibujar(); }).observe($("caja"));
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", dibujar);
+new MutationObserver(dibujar).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+medir(); cambiarHerramienta("Sin dibujo"); dibujar();
+iniciarPython();
+</script>
+</body>
+</html>
